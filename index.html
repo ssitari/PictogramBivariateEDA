@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pictogram Bivariate EDA — US States</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+  :root {
+    --surface: #fff;
+    --plane: #edecea;
+    --ink: #1a1a1a;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e6e5e1;
+    --axis: #c3c2b7;
+    --line: #d8d7d2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--plane);
+    color: var(--ink);
+    font-size: 13px;
+  }
+
+  /* ---- toolbar ---- */
+  #toolbar {
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
+    padding: 12px 18px; background: var(--surface);
+    border-bottom: 1px solid var(--line);
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); font-weight: 600;
+  }
+  select, button {
+    font: inherit; padding: 5px 8px; border: 1px solid #ccc;
+    border-radius: 4px; background: #fff; color: var(--ink);
+  }
+  select { min-width: 210px; }
+  button { cursor: pointer; }
+  button:hover { background: #f4f4f4; border-color: #999; }
+  #title { margin: 0 auto 0 0; }
+  #title h1 { margin: 0; font-size: 15px; font-weight: 650; }
+  #title p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+
+  /* ---- layout ---- */
+  #main {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    padding: 14px; align-items: start;
+  }
+  @media (max-width: 1000px) { #main { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px; padding: 10px 12px 14px; position: relative;
+  }
+  .panel h2 {
+    margin: 0 0 2px; font-size: 12px; font-weight: 650;
+  }
+  .panel p.sub { margin: 0 0 8px; font-size: 11px; color: var(--muted); }
+  svg { display: block; width: 100%; height: auto; }
+
+  /* ---- chart ink ---- */
+  .grid line { stroke: var(--grid); shape-rendering: crispEdges; }
+  .axis path, .axis line { stroke: var(--axis); }
+  .axis text { fill: var(--muted); font-size: 10px; }
+  .axis-title { fill: var(--ink-2); font-size: 11px; font-weight: 600; }
+  .refline { stroke: var(--muted); stroke-dasharray: 4 3; stroke-width: 1; }
+  .refline-label { fill: var(--muted); font-size: 10px; font-style: italic; }
+  .state-border { fill: none; stroke: #fff; stroke-width: .6; }
+  .nation-border { fill: none; stroke: #b9b8b3; stroke-width: .8; }
+  .mark { cursor: pointer; }
+  .mark.dim { opacity: var(--dim, .2); }
+  .map-state { cursor: pointer; }
+  .map-state.dim { opacity: var(--dim, .2); }
+  .hl { stroke: #111; stroke-width: 1.6; paint-order: stroke; }
+
+  /* ---- legend ---- */
+  #legend {
+    position: absolute; right: 14px; bottom: 14px;
+    background: rgba(255,255,255,.93); border: 1px solid var(--line);
+    border-radius: 5px; padding: 8px 10px;
+  }
+  #legend .cap {
+    font-size: 10px; color: var(--muted); font-weight: 600;
+    text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px;
+  }
+
+  /* ---- tooltip ---- */
+  #tip {
+    position: fixed; pointer-events: none; opacity: 0;
+    background: rgba(20,20,20,.9); color: #fff; padding: 7px 9px;
+    border-radius: 4px; font-size: 11px; line-height: 1.45;
+    transition: opacity .08s; z-index: 20; max-width: 240px;
+  }
+  #tip b { font-size: 12px; }
+  #tip .k { color: #bdbdbd; }
+
+  /* ---- table view (accessibility relief) ---- */
+  #tableWrap {
+    margin: 0 14px 14px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px;
+    max-height: 320px; overflow: auto;
+  }
+  #tableWrap[hidden] { display: none; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #f0efec; }
+  th { position: sticky; top: 0; background: var(--surface); color: var(--ink-2); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .swatch {
+    display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+    margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.15);
+  }
+  #status { padding: 0 18px 12px; color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div id="title">
+    <h1>Pictogram bivariate EDA — US states</h1>
+    <p>Each scatterplot mark is the state's own outline, normalized to equal area.</p>
+  </div>
+  <div class="field">
+    <label for="varX">X variable</label>
+    <select id="varX"></select>
+  </div>
+  <div class="field">
+    <label for="varY">Y variable</label>
+    <select id="varY"></select>
+  </div>
+  <div class="field">
+    <label for="scheme">Color scheme</label>
+    <select id="scheme"></select>
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button id="clearBtn" type="button">Clear selection</button>
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button id="tableBtn" type="button" aria-expanded="false">Show table</button>
+  </div>
+</div>
+
+<div id="main">
+  <div class="panel">
+    <h2 id="scatterTitle">Scatterplot</h2>
+    <p class="sub">Drag to brush a selection. Marks are state silhouettes, all equal area.</p>
+    <svg id="scatter" role="img" aria-labelledby="scatterTitle"></svg>
+  </div>
+  <div class="panel">
+    <h2 id="mapTitle">Choropleth</h2>
+    <p class="sub">Bivariate class by tercile on each variable. Hover to trace a state to its mark.</p>
+    <svg id="map" role="img" aria-labelledby="mapTitle"></svg>
+    <div id="legend"><div class="cap">Bivariate key</div><svg id="legendSvg"></svg></div>
+  </div>
+</div>
+
+<div id="tableWrap" hidden>
+  <table id="dataTable">
+    <thead><tr>
+      <th>State</th><th class="num" id="thX">X</th>
+      <th class="num" id="thY">Y</th><th>Class</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div id="status" role="status"></div>
+<div id="tip"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
