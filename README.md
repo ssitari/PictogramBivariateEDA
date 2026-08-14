@@ -115,17 +115,59 @@ to sit above the marks (at this size a mark covers most drag origins), so hover 
 is resolved by nearest anchor within a radius, and one gesture is not overloaded to
 mean two things.
 
-## Data
+## Data sources and citations
 
-MIT Election Data and Science Lab, U.S. President state-level returns, 1976–2024
-(13 elections × 51 jurisdictions). Note the raw file is named `1976-2020-president.csv`
-but contains 2024.
+### Election returns
 
-`reshape_wide.py` pivots the long file to one row per state; `State_Dem_pct_wide.csv`
-is what the app reads. Verify the dataset's current citation and terms of use at
-Harvard Dataverse before redistributing.
+> MIT Election Data and Science Lab. 2017. *U.S. President 1976–2024*. V10.0.
+> Harvard Dataverse. <https://doi.org/10.7910/DVN/42MVDX>
+
+State-level returns for 13 presidential elections × 51 jurisdictions (50 states plus
+DC). Deposited 2017 and versioned forward as elections are added, so the title and
+coverage change with each release — **cite the version you actually downloaded.**
+Distributed under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/),
+Harvard Dataverse's default waiver; confirm on the landing page for your version.
+
+Landing page:
+<https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/42MVDX>
+
+Note the local raw file is named `1976-2020-president.csv` but contains all 13
+elections **through 2024** — the upstream file name lags its coverage.
+`reshape_wide.py` pivots the long file to one row per state, producing
+`State_Dem_pct_wide.csv`, which is what the app reads.
+
+### Geography
+
+> Bostock, Mike. *us-atlas: Pre-built TopoJSON from the U.S. Census Bureau.*
+> Version 3.0.1. ISC License. <https://github.com/topojson/us-atlas>
+
+The file used is `states-albers-10m.json`, containing the `states` and `nation`
+geometry collections — quantized, simplified, and projected with `d3.geoAlbersUsa`
+to fit a 975×610 viewport, with Alaska and Hawaii insets already placed.
+
+**The `-10m` in that file name is a display-resolution label, not the Census scale.**
+The underlying shapefile is `cb_2017_us_state_5m`, the 1:5,000,000 cartographic
+boundary file:
+
+> U.S. Census Bureau. *Cartographic Boundary Shapefiles*, 2017 edition
+> (`cb_2017_us_state_5m`). <https://www2.census.gov/geo/tiger/GENZ2017/shp/>
+
+Census landing page:
+<https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html>
+
+As a work of the U.S. federal government the Census source data is in the public
+domain; Bostock's redistribution and build scripts are ISC-licensed.
+
+### Software
+
+> Bostock, Mike, et al. *D3.js.* v7.8.5. ISC License.
+> <https://d3js.org> · <https://github.com/d3/d3>
+
+Also `topojson-client` v3 (ISC) at runtime, plus `d3-geo`, `d3-polygon` and
+`topojson-client` in the Node preprocessing step.
 
 ## License
 
-MIT — see `LICENSE`. The license covers the code; the election data carries its own
-terms.
+MIT — see `LICENSE`. That covers the code in this repository. The election returns
+(CC0 1.0), the Census geography (public domain), and the us-atlas redistribution
+(ISC) each carry their own terms, cited above.
