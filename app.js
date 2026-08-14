@@ -16,7 +16,7 @@
 //  projection anywhere in this file.
 
 import {
-  TITLE, SUBTITLE,
+  TITLE, SUBTITLE, DATA_CREDIT, REPO_URL, REPO_LABEL,
   DATA_FILE, TOPOLOGY_FILE, SILHOUETTE_FILE, TOPOLOGY_OBJECT,
   GEOGRAPHY_LABEL, FEATURE_ID_FIELD, FEATURE_NAME_FIELD, FEATURE_GROUP_FIELD,
   ID_PAD_WIDTH, VARIABLES, DEFAULT_VAR_X, DEFAULT_VAR_Y,
@@ -135,13 +135,20 @@ Promise.all([
 
   byId = new Map(rows.map(r => [r.id, r]));
 
+  // Join diagnostics stay available but off the page: a clean join is the
+  // normal case and doesn't need announcing. A broken one is usually the
+  // FIPS zero-padding (see ID_PAD_WIDTH), which drops exactly the
+  // single-digit states and otherwise looks like success.
   const unjoined = features.filter(f => !byId.has(String(f.id)));
-  $('#status').textContent =
-    `${rows.length} ${GEOGRAPHY_LABEL}s joined` +
-    (missing.length ? ` · ${missing.length} data rows without geometry: ${missing.join(', ')}` : '') +
-    (unjoined.length ? ` · ${unjoined.length} geometries without data` : '') +
-    ` · source: ${DATA_FILE}`;
+  if (missing.length || unjoined.length) {
+    console.warn(
+      `[join] ${rows.length} of ${csv.length} ${GEOGRAPHY_LABEL}s matched from ${DATA_FILE}.`,
+      missing.length ? `\n  ${missing.length} data row(s) without geometry: ${missing.join(', ')}` : '',
+      unjoined.length ? `\n  ${unjoined.length} geometr(ies) without data: ${unjoined.map(f => f.properties.name).join(', ')}` : ''
+    );
+  }
 
+  buildFooter();
   buildControls();
   render();
 });
@@ -164,6 +171,27 @@ function colorFor(rec, bx, by) {
   const cy = classOf(rec.values[state.varY], by);
   if (cx == null || cy == null) return NULL_COLOR;
   return BIVARIATE_SCHEMES[state.scheme].colors[bivIndex(cx, cy)];
+}
+
+// ============================================================
+//  FOOTER
+// ============================================================
+// Built as nodes rather than an HTML string: these values come from
+// config.js, and the repo link should never be assembled by concatenation.
+function buildFooter() {
+  const foot = $('#pageFoot');
+  foot.textContent = '';
+  if (DATA_CREDIT) foot.append(document.createTextNode(`Data: ${DATA_CREDIT}. `));
+  if (REPO_URL) {
+    foot.append(document.createTextNode('Source code, method notes and full citations: '));
+    const a = document.createElement('a');
+    a.href = REPO_URL;
+    a.textContent = REPO_LABEL || REPO_URL;
+    a.rel = 'noopener';
+    a.target = '_blank';
+    foot.append(a);
+    foot.append(document.createTextNode('.'));
+  }
 }
 
 // ============================================================

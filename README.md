@@ -61,8 +61,14 @@ Same two-file pattern as the other choropleth tools in this collection:
 `FEATURE_NAME_FIELD`, `FEATURE_GROUP_FIELD`, `ID_PAD_WIDTH`, a `VARIABLES` array, and
 defaults for the two axes, the color scheme, and marker sizing.
 
-`TITLE` and `SUBTITLE` drive both the page heading and the browser tab, so publishing a
-situated instance of the tool never means editing markup.
+`TITLE` and `SUBTITLE` drive both the page heading and the browser tab, and
+`DATA_CREDIT` / `REPO_URL` / `REPO_LABEL` build the footer credit — so publishing a
+situated instance of the tool never means editing markup. Set `REPO_URL` to `null` to
+drop the link.
+
+Join failures are reported to the browser console rather than on the page, since a
+clean join is the normal case. If states go missing, look there first — the usual
+cause is FIPS zero-padding.
 
 ### Color and political data
 

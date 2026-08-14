@@ -135,7 +135,11 @@
     display: inline-block; width: 10px; height: 10px; border-radius: 2px;
     margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.15);
   }
-  #status { padding: 0 18px 12px; color: var(--muted); font-size: 11px; }
+  #pageFoot {
+    padding: 2px 18px 18px; color: var(--muted); font-size: 11px;
+  }
+  #pageFoot a { color: var(--ink-2); }
+  #pageFoot a:hover { color: var(--ink); }
 </style>
 </head>
 <body>
@@ -198,7 +202,7 @@
   </table>
 </div>
 
-<div id="status" role="status"></div>
+<footer id="pageFoot"></footer>
 <div id="tip"></div>
 
 <script type="module" src="app.js"></script>

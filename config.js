@@ -44,6 +44,14 @@ export const TITLE = 'Presidential Elections 1976–2024, Democratic Vote Share'
 export const SUBTITLE =
   "Each scatterplot mark is the state's own outline, normalized to equal area.";
 
+// Small credit line at the foot of the page. DATA_CREDIT names the source in
+// passing; REPO_URL points at the repository, where the full formal citations
+// (DOI, version, license) and the method notes live. Set REPO_URL to null to
+// drop the link entirely.
+export const DATA_CREDIT = 'MIT Election Data and Science Lab';
+export const REPO_URL = 'https://github.com/ssitari/PictogramBivariateEDA';
+export const REPO_LABEL = 'ssitari/PictogramBivariateEDA';
+
 // ============================================================
 //  VARIABLES
 //  All mappable numeric fields. Any two can be chosen as X / Y.
