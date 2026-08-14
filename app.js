@@ -16,6 +16,7 @@
 //  projection anywhere in this file.
 
 import {
+  TITLE, SUBTITLE,
   DATA_FILE, TOPOLOGY_FILE, SILHOUETTE_FILE, TOPOLOGY_OBJECT,
   GEOGRAPHY_LABEL, FEATURE_ID_FIELD, FEATURE_NAME_FIELD, FEATURE_GROUP_FIELD,
   ID_PAD_WIDTH, VARIABLES, DEFAULT_VAR_X, DEFAULT_VAR_Y,
@@ -86,6 +87,11 @@ let borders, nation;  // topojson meshes
 const varById = id => VARIABLES.find(v => v.id === id);
 const padId = v => String(v).trim().padStart(ID_PAD_WIDTH, '0');
 const $ = sel => document.querySelector(sel);
+
+// Titles live in config.js so adapting the tool never means editing markup.
+document.title = TITLE;
+$('#titleText').textContent = TITLE;
+$('#subtitleText').textContent = SUBTITLE;
 
 // ============================================================
 //  LOAD + JOIN

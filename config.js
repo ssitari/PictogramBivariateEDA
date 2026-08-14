@@ -33,6 +33,18 @@ export const FEATURE_GROUP_FIELD = 'state_po';  // shown in tooltip, null to omi
 export const ID_PAD_WIDTH = 2;
 
 // ============================================================
+//  PRESENTATION
+// ============================================================
+//
+// The tool is generic; a published instance of it is not. Name what the
+// reader is actually looking at rather than the machinery -- these set both
+// the page heading and the browser tab title.
+
+export const TITLE = 'Presidential Elections 1976–2024, Democratic Vote Share';
+export const SUBTITLE =
+  "Each scatterplot mark is the state's own outline, normalized to equal area.";
+
+// ============================================================
 //  VARIABLES
 //  All mappable numeric fields. Any two can be chosen as X / Y.
 // ============================================================
@@ -59,16 +71,27 @@ export const VARIABLES = [
 //  DEFAULTS
 // ============================================================
 
-// The endpoints of the series: the realignment is the story. Arkansas and
-// West Virginia fall ~30 points, Vermont climbs 23. Because both axes carry
-// the same measure in the same unit, the app draws a 1:1 reference line.
-export const DEFAULT_VAR_X = 'democratic_pct_1976';
+// A state's long-run average against its most recent result. Because both
+// axes carry the same measure in the same unit, the app draws a 1:1
+// reference line -- and here that line reads as "2024 versus its own
+// historical norm": above it, the state ran ahead of its average; below,
+// behind. Set X to democratic_pct_1976 instead to frame the whole series
+// as endpoints and put the realignment on the diagonal (Arkansas and West
+// Virginia fall ~30 points, Vermont climbs 23).
+export const DEFAULT_VAR_X = 'democratic_pct_ave_1976_2024';
 export const DEFAULT_VAR_Y = 'democratic_pct_2024';
 
 // Bivariate color scheme — choose from BIVARIATE_SCHEMES in app.js:
 //   'DkBlue_DkRed', 'DkViolet_DkGreen', 'DkCyan_DkBrown',
 //   'GrPink', 'PurpleOrange', 'BlueTan', 'None'
-export const DEFAULT_BIVARIATE_SCHEME = 'DkBlue_DkRed';
+//
+// Cyan/Brown by default, NOT Blue/Red: on US election data a red-blue ramp
+// reads as party affiliation, so a Republican-leaning state would appear
+// red for reasons the legend never claims. Both axes here measure the same
+// thing -- Democratic share -- so any party-coded palette would fight the
+// encoding. Blue/Red stays available in the picker for data without that
+// baggage.
+export const DEFAULT_BIVARIATE_SCHEME = 'DkCyan_DkBrown';
 
 // Color for features with null / no-data values
 export const NULL_COLOR = '#d0d0d0';

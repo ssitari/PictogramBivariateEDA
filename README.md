@@ -56,10 +56,21 @@ Same two-file pattern as the other choropleth tools in this collection:
 - **`app.js`** — the visualization engine; do not edit unless changing the tool itself
 - **`config.js`** — the only file to edit when adapting the tool to new data
 
-`config.js` exports `DATA_FILE`, `TOPOLOGY_FILE`, `SILHOUETTE_FILE`, `TOPOLOGY_OBJECT`,
-`GEOGRAPHY_LABEL`, `FEATURE_ID_FIELD`, `FEATURE_NAME_FIELD`, `FEATURE_GROUP_FIELD`,
-`ID_PAD_WIDTH`, a `VARIABLES` array, and defaults for the two axes, the color scheme,
-and marker sizing.
+`config.js` exports `TITLE`, `SUBTITLE`, `DATA_FILE`, `TOPOLOGY_FILE`,
+`SILHOUETTE_FILE`, `TOPOLOGY_OBJECT`, `GEOGRAPHY_LABEL`, `FEATURE_ID_FIELD`,
+`FEATURE_NAME_FIELD`, `FEATURE_GROUP_FIELD`, `ID_PAD_WIDTH`, a `VARIABLES` array, and
+defaults for the two axes, the color scheme, and marker sizing.
+
+`TITLE` and `SUBTITLE` drive both the page heading and the browser tab, so publishing a
+situated instance of the tool never means editing markup.
+
+### Color and political data
+
+The default scheme is **Cyan / Brown**, not Blue / Red. On US election data a red-blue
+ramp reads as party affiliation, so a Republican-leaning state would appear red for
+reasons the legend never claims — and here *both* axes measure the same quantity
+(Democratic share), so a party-coded palette actively fights the encoding. Blue / Red
+remains in the picker for data that doesn't carry that association.
 
 ## Geometry pipeline
 
