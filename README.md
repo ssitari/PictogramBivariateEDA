@@ -166,6 +166,16 @@ domain; Bostock's redistribution and build scripts are ISC-licensed.
 Also `topojson-client` v3 (ISC) at runtime, plus `d3-geo`, `d3-polygon` and
 `topojson-client` in the Node preprocessing step.
 
+---
+
+## Acknowledgements
+
+Bivariate color schemes by [Joshua Stevens](https://www.joshuastevens.net/cartography/make-a-bivariate-choropleth-map/).
+
+Most of the code written with assistance from [Claude](https://claude.ai) (Anthropic).
+
+---
+
 ## License
 
 MIT — see `LICENSE`. That covers the code in this repository. The election returns
