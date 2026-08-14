@@ -49,14 +49,20 @@
   #title p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
 
   /* ---- layout ---- */
+  /* Both panels stretch to a common height so the map panel's footer strip
+     can absorb the difference. The Albers layout is 1.6:1 against a roughly
+     square scatterplot, and Florida runs to the very bottom edge of the map
+     canvas -- so the legend gets its own space below rather than sitting on
+     top of Florida, which is the only large gap inside the map itself. */
   #main {
     display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
-    padding: 14px; align-items: start;
+    padding: 14px; align-items: stretch;
   }
   @media (max-width: 1000px) { #main { grid-template-columns: 1fr; } }
   .panel {
     background: var(--surface); border: 1px solid var(--line);
     border-radius: 6px; padding: 10px 12px 14px; position: relative;
+    display: flex; flex-direction: column;
   }
   .panel h2 {
     margin: 0 0 2px; font-size: 12px; font-weight: 650;
@@ -79,12 +85,19 @@
   .map-state.dim { opacity: var(--dim, .2); }
   .hl { stroke: #111; stroke-width: 1.6; paint-order: stroke; }
 
-  /* ---- legend ---- */
-  #legend {
-    position: absolute; right: 14px; bottom: 14px;
-    background: rgba(255,255,255,.93); border: 1px solid var(--line);
-    border-radius: 5px; padding: 8px 10px;
+  /* ---- map panel footer: shared controls + legend ---- */
+  #mapFooter {
+    margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line);
+    display: flex; gap: 18px; align-items: flex-end;
   }
+  #mapControls { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; }
+  #mapControls .field { width: 100%; }
+  #mapControls select { width: 100%; min-width: 0; }
+  #scopeNote {
+    font-size: 10px; color: var(--muted); font-style: italic;
+    margin: 0 0 2px;
+  }
+  #legend { flex: 0 0 auto; }
   #legend .cap {
     font-size: 10px; color: var(--muted); font-weight: 600;
     text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px;
@@ -127,18 +140,6 @@
     <p id="subtitleText">Each scatterplot mark is the state's own outline, normalized to equal area.</p>
   </div>
   <div class="field">
-    <label for="varX">X variable</label>
-    <select id="varX"></select>
-  </div>
-  <div class="field">
-    <label for="varY">Y variable</label>
-    <select id="varY"></select>
-  </div>
-  <div class="field">
-    <label for="scheme">Color scheme</label>
-    <select id="scheme"></select>
-  </div>
-  <div class="field">
     <label>&nbsp;</label>
     <button id="clearBtn" type="button">Clear selection</button>
   </div>
@@ -158,7 +159,25 @@
     <h2 id="mapTitle">Choropleth</h2>
     <p class="sub">Bivariate class by tercile on each variable. Hover to trace a state to its mark.</p>
     <svg id="map" role="img" aria-labelledby="mapTitle"></svg>
-    <div id="legend"><div class="cap">Bivariate key</div><svg id="legendSvg"></svg></div>
+
+    <div id="mapFooter">
+      <div id="mapControls">
+        <p id="scopeNote">Variables and colors apply to both views.</p>
+        <div class="field">
+          <label for="varX">X variable</label>
+          <select id="varX"></select>
+        </div>
+        <div class="field">
+          <label for="varY">Y variable</label>
+          <select id="varY"></select>
+        </div>
+        <div class="field">
+          <label for="scheme">Color scheme</label>
+          <select id="scheme"></select>
+        </div>
+      </div>
+      <div id="legend"><div class="cap">Bivariate key</div><svg id="legendSvg"></svg></div>
+    </div>
   </div>
 </div>
 

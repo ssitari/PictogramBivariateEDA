@@ -220,7 +220,7 @@ function render() {
 
   drawScatter(vx, vy, bx, by);
   drawMap(bx, by);
-  drawLegend(vx, vy);
+  drawLegend(vx, vy, bx, by);
   drawTable(vx, vy, bx, by);
 }
 
@@ -409,16 +409,22 @@ function highlight() {
 }
 
 // ---- legend ----------------------------------------------------------
-function drawLegend(vx, vy) {
-  const S = 20, gap = 2, pad = 4;
+// Names the variables and shows the tercile break values, so the key can be
+// read without consulting the controls. Truncation keeps a long variable
+// label from stretching the panel.
+function drawLegend(vx, vy, bx, by) {
+  const S = 26, gap = 2;
   const size = S * 3 + gap * 2;
+  const padL = 46, padB = 34, padT = 6, padR = 8;
+  const W = padL + size + padR;
+  const H = padT + size + padB;
+
   const svg = d3.select('#legendSvg')
-    .attr('width', size + 74).attr('height', size + 30)
-    .attr('viewBox', `0 0 ${size + 74} ${size + 30}`);
+    .attr('width', W).attr('height', H).attr('viewBox', `0 0 ${W} ${H}`);
   svg.selectAll('*').remove();
 
   const colors = BIVARIATE_SCHEMES[state.scheme].colors;
-  const g = svg.append('g').attr('transform', `translate(${pad + 14},${pad})`);
+  const g = svg.append('g').attr('transform', `translate(${padL},${padT})`);
 
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
@@ -431,17 +437,34 @@ function drawLegend(vx, vy) {
     }
   }
 
+  const clip = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+  const tick = { 'font-size': 8, fill: '#898781' };
+
+  // Break values at the class boundaries.
+  bx.forEach((b, i) => {
+    g.append('text')
+      .attr('x', (i + 1) * (S + gap) - gap / 2).attr('y', size + 11)
+      .attr('text-anchor', 'middle').attr('font-size', 8).attr('fill', tick.fill)
+      .text(vx.fmt(b));
+  });
+  by.forEach((b, i) => {
+    g.append('text')
+      .attr('x', -5).attr('y', size - (i + 1) * (S + gap) + gap / 2 + 3)
+      .attr('text-anchor', 'end').attr('font-size', 8).attr('fill', tick.fill)
+      .text(vy.fmt(b));
+  });
+
+  g.append('text')
+    .attr('x', size / 2).attr('y', size + 25)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', 9).attr('font-weight', 600).attr('fill', '#52514e')
+    .text(clip(vx.label, 26) + ' →');
   g.append('text')
     .attr('transform', 'rotate(-90)')
-    .attr('x', -size / 2).attr('y', -6)
+    .attr('x', -size / 2).attr('y', -32)
     .attr('text-anchor', 'middle')
-    .attr('font-size', 9).attr('fill', '#52514e')
-    .text(`${vy.unit === '%' ? 'Y' : 'Y'} →`);
-  g.append('text')
-    .attr('x', size / 2).attr('y', size + 12)
-    .attr('text-anchor', 'middle')
-    .attr('font-size', 9).attr('fill', '#52514e')
-    .text('X →');
+    .attr('font-size', 9).attr('font-weight', 600).attr('fill', '#52514e')
+    .text(clip(vy.label, 26) + ' →');
 }
 
 // ---- table view (relief channel; identity never color-alone) ----------
