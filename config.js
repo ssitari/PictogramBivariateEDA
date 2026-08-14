@@ -113,6 +113,13 @@ export const DEEMPHASIS_OPACITY = 0.2;
 // the plot becomes an unreadable pile in the dense middle.
 export const MARKER_SCALE = 0.85;
 
-// Silhouettes overlap heavily wherever states cluster. Each mark carries a
-// ring in the surface color so an overlapped outline stays separable.
+// Silhouettes overlap heavily wherever states cluster, so each mark carries
+// a ring that separates it from whatever sits beneath.
+//
+// The ring is grey rather than the surface white on purpose: the lightest
+// cell of every bivariate scheme is near-white (#e8e8e8 or #f3f3f3), and a
+// white-ringed pale mark on a white panel has no edge at all -- those states
+// vanish. A grey ring both separates overlapping marks AND gives pale ones a
+// visible outline.
 export const MARKER_RING_WIDTH = 1.5;
+export const MARKER_RING_COLOR = '#9c9b95';

@@ -76,8 +76,15 @@
   .axis text { fill: var(--muted); font-size: 10px; }
   .axis-title { fill: var(--ink-2); font-size: 11px; font-weight: 600; }
   .refline { stroke: var(--muted); stroke-dasharray: 4 3; stroke-width: 1; }
-  .refline-label { fill: var(--muted); font-size: 10px; font-style: italic; }
-  .state-border { fill: none; stroke: #fff; stroke-width: .6; }
+  /* Halo so the reference line doesn't run through the lettering. */
+  .refline-label {
+    fill: var(--muted); font-size: 10px; font-style: italic;
+    stroke: var(--surface); stroke-width: 3px; paint-order: stroke;
+  }
+  /* Grey, not white: the lightest bivariate cell is near-white, so white
+     borders let neighbouring pale states merge into one shapeless mass
+     (Montana / Wyoming / the Dakotas being the worst case). */
+  .state-border { fill: none; stroke: #b3b2ac; stroke-width: .6; }
   .nation-border { fill: none; stroke: #b9b8b3; stroke-width: .8; }
   .mark { cursor: pointer; }
   .mark.dim { opacity: var(--dim, .2); }

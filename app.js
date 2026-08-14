@@ -21,7 +21,7 @@ import {
   GEOGRAPHY_LABEL, FEATURE_ID_FIELD, FEATURE_NAME_FIELD, FEATURE_GROUP_FIELD,
   ID_PAD_WIDTH, VARIABLES, DEFAULT_VAR_X, DEFAULT_VAR_Y,
   DEFAULT_BIVARIATE_SCHEME, NULL_COLOR, SELECTION_COLOR, DEEMPHASIS_OPACITY,
-  MARKER_SCALE, MARKER_RING_WIDTH,
+  MARKER_SCALE, MARKER_RING_WIDTH, MARKER_RING_COLOR,
 } from './config.js';
 
 // ============================================================
@@ -269,8 +269,9 @@ function drawScatter(vx, vy, bx, by) {
     g.append('line').attr('class', 'refline')
       .attr('x1', x(lo)).attr('y1', y(lo))
       .attr('x2', x(hi)).attr('y2', y(hi));
+    // Sits below the line, not across it.
     g.append('text').attr('class', 'refline-label')
-      .attr('x', x(hi) - 6).attr('y', y(hi) + 14).attr('text-anchor', 'end')
+      .attr('x', x(hi) - 8).attr('y', y(hi) + 22).attr('text-anchor', 'end')
       .text('no change (1:1)');
   }
 
@@ -301,7 +302,7 @@ function drawScatter(vx, vy, bx, by) {
     .attr('transform', d =>
       `translate(${x(d.values[state.varX])},${y(d.values[state.varY])}) scale(${MARKER_SCALE})`)
     .attr('fill', d => colorFor(d, bx, by))
-    .attr('stroke', '#fff')
+    .attr('stroke', MARKER_RING_COLOR)
     .attr('stroke-width', MARKER_RING_WIDTH / MARKER_SCALE)
     .attr('paint-order', 'stroke')
     .attr('vector-effect', 'non-scaling-stroke')
@@ -415,7 +416,7 @@ function highlight() {
 function drawLegend(vx, vy, bx, by) {
   const S = 26, gap = 2;
   const size = S * 3 + gap * 2;
-  const padL = 46, padB = 34, padT = 6, padR = 8;
+  const padL = 56, padB = 48, padT = 6, padR = 8;
   const W = padL + size + padR;
   const H = padT + size + padB;
 
@@ -437,7 +438,29 @@ function drawLegend(vx, vy, bx, by) {
     }
   }
 
-  const clip = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+  // Wrap rather than truncate. A clipped label reading "…share, 1976–20."
+  // looks like a real but WRONG year range, which is worse than no label.
+  const wrap = (s, maxChars, maxLines = 2) => {
+    const lines = [];
+    let cur = '';
+    for (const word of s.split(/\s+/)) {
+      if (!cur) cur = word;
+      else if ((cur + ' ' + word).length <= maxChars) cur += ' ' + word;
+      else { lines.push(cur); cur = word; }
+    }
+    if (cur) lines.push(cur);
+    if (lines.length > maxLines) {
+      const kept = lines.slice(0, maxLines);
+      kept[maxLines - 1] = kept[maxLines - 1].replace(/.{1}$/, '') + '…';
+      return kept;
+    }
+    return lines;
+  };
+
+  const multiline = (sel, lines, x, y, dy = 10) =>
+    lines.forEach((ln, i) =>
+      sel.append('tspan').attr('x', x).attr('y', y + i * dy).text(ln));
+
   const tick = { 'font-size': 8, fill: '#898781' };
 
   // Break values at the class boundaries.
@@ -454,17 +477,16 @@ function drawLegend(vx, vy, bx, by) {
       .text(vy.fmt(b));
   });
 
-  g.append('text')
-    .attr('x', size / 2).attr('y', size + 25)
+  const xLab = g.append('text')
     .attr('text-anchor', 'middle')
-    .attr('font-size', 9).attr('font-weight', 600).attr('fill', '#52514e')
-    .text(clip(vx.label, 26) + ' →');
-  g.append('text')
+    .attr('font-size', 9).attr('font-weight', 600).attr('fill', '#52514e');
+  multiline(xLab, wrap(vx.label + ' →', 24), size / 2, size + 25);
+
+  const yLab = g.append('text')
     .attr('transform', 'rotate(-90)')
-    .attr('x', -size / 2).attr('y', -32)
     .attr('text-anchor', 'middle')
-    .attr('font-size', 9).attr('font-weight', 600).attr('fill', '#52514e')
-    .text(clip(vy.label, 26) + ' →');
+    .attr('font-size', 9).attr('font-weight', 600).attr('fill', '#52514e');
+  multiline(yLab, wrap(vy.label + ' →', 24), -size / 2, -42);
 }
 
 // ---- table view (relief channel; identity never color-alone) ----------
