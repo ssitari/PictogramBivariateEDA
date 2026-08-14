@@ -8,6 +8,14 @@ The map shows *where*; the scatterplot shows *how much*; and the mark itself sho
 *which* — so a reader can identify Texas or Michigan in the scatter without a tooltip,
 a legend lookup, or a hover.
 
+---
+
+## Live demo
+
+[View on GitHub Pages](https://ssitari.github.io/PictogramBivariateEDA/)
+
+---
+
 ## When this works, and when it doesn't
 
 This is a deliberately narrow tool. It only works for **vernacular geographies** — ones
