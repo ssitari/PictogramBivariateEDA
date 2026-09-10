@@ -1,14 +1,20 @@
 {
-  "name": "choroplethedapictogrambivariateusstates",
+  "name": "pictogram-bivariate-eda",
   "version": "1.0.0",
-  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "preprocess": "node preprocess.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "d3",
+    "topojson",
+    "choropleth",
+    "bivariate",
+    "cartography",
+    "dataviz"
+  ],
+  "author": "Eric Glass",
+  "license": "MIT",
+  "description": "Bivariate choropleth linked to a brushable scatterplot whose marks are the geographies' own silhouettes. Node deps are for preprocess.js only; the page itself loads D3 and topojson from a CDN.",
   "type": "module",
   "dependencies": {
     "d3-geo": "^3.1.1",

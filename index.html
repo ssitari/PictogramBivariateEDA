@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Presidential Elections 1976–2024, Democratic Vote Share</title>
+<!-- Generic on purpose. TITLE in config.js replaces this on load; leaving a
+     previous instance's title here would show the wrong one until it does. -->
+<title>Pictogram bivariate EDA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
 <style>
@@ -159,9 +161,9 @@
 
 <div id="toolbar">
   <div id="title">
-    <!-- Text is set from TITLE / SUBTITLE in config.js on load. -->
-    <h1 id="titleText">Presidential Elections 1976–2024, Democratic Vote Share</h1>
-    <p id="subtitleText">Each scatterplot mark is the state's own outline, normalized to equal area.</p>
+    <!-- Left empty: every string on this page comes from config.js on load. -->
+    <h1 id="titleText"></h1>
+    <p id="subtitleText"></p>
   </div>
   <div class="field">
     <label>&nbsp;</label>
@@ -176,12 +178,12 @@
 <div id="main">
   <div class="panel">
     <h2 id="scatterTitle">Scatterplot</h2>
-    <p class="sub">Drag to brush a selection. Marks are state silhouettes, all equal area.</p>
+    <p class="sub" id="scatterNote"></p>
     <svg id="scatter" role="img" aria-labelledby="scatterTitle"></svg>
   </div>
   <div class="panel">
     <h2 id="mapTitle">Choropleth</h2>
-    <p class="sub">Bivariate class by tercile on each variable. Hover to trace a state to its mark.</p>
+    <p class="sub" id="mapNote"></p>
     <svg id="map" role="img" aria-labelledby="mapTitle"></svg>
 
     <div id="mapFooter">
@@ -227,7 +229,9 @@
 
 <script type="module" src="app.js"></script>
 
-<!-- Cloudflare Web Analytics -->
+<!-- Cloudflare Web Analytics. The token below belongs to THIS deployment: if
+     you are reusing this tool, replace it with your own or delete these three
+     lines, or your visitors will be counted against someone else's account. -->
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "8bd0b9cc3d344a979211402c2f0108ee"}'></script>
 <!-- End Cloudflare Web Analytics -->
 </body>

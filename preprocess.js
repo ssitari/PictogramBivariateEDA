@@ -1,25 +1,30 @@
 /**
  * preprocess.js
  * -------------
- * Turns data/states-albers-10m.json into a normalized silhouette lookup for
- * use as scatterplot markers, plus a self-contained validation grid.
+ * Derives the scatterplot's marker silhouettes from the same TopoJSON that
+ * draws the choropleth, plus a self-contained validation grid.
  *
- * The input topology is ALREADY PROJECTED (d3.geoAlbersUsa, 975x610 layout),
- * so every coordinate is planar screen space. That means:
- *   - the map renders with d3.geoPath() and NO projection
- *   - all area/centroid math here uses d3-polygon (planar), never d3-geo
- *     (spherical) -- the spherical versions would return garbage on these
- *     coordinates.
+ * Everything it needs to know about the topology comes from config.js -- the
+ * same file app.js reads -- so adapting the tool to a new geography means
+ * editing config.js and re-running this, and never editing either program.
+ * Paths there are relative to the project root, so run it from there:
  *
- * Each state is centered on its area-weighted centroid and scaled so all 51
- * silhouettes enclose the same AREA (not the same bounding box: a thin state
- * and a chunky state with matching bboxes carry very different visual ink).
- *
- * Run:
  *   node preprocess.js
+ *
  * Outputs:
- *   data/state-silhouettes.json   { "01": { d, w, h, scale, cx, cy }, ... }
- *   validate-grid.html            51 labeled silhouettes, opens via file://
+ *   <SILHOUETTE_FILE>    { meta: {...}, shapes: { "01": { d, w, h, ... }, ... } }
+ *   validate-grid.html   every silhouette labeled, plus strips at real marker
+ *                        size; opens straight from file://
+ *
+ * THE ONE THING TO KNOW: the input topology must ALREADY BE PROJECTED, so its
+ * coordinates are planar screen space rather than lon/lat. That is what lets a
+ * unit's silhouette in the scatter be geometrically identical to its shape on
+ * the map, and it means:
+ *   - the map renders with d3.geoPath() and NO projection
+ *   - all area and centroid math here uses d3-polygon (planar), never d3-geo
+ *     (spherical) -- the spherical versions assume lon/lat and return garbage
+ *     on projected coordinates
+ * See the README for how to project a topology that isn't already.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -27,37 +32,54 @@ import * as topojson from "topojson-client";
 import { geoPath } from "d3-geo";
 import { polygonArea, polygonCentroid } from "d3-polygon";
 
-// ---- normalization constants (twiddle and re-run) --------------------
-const TARGET_AREA = 400; // px^2 enclosed by every silhouette (20x20 equivalent)
+import {
+  TOPOLOGY_FILE,
+  SILHOUETTE_FILE,
+  TOPOLOGY_OBJECT,
+  TOPOLOGY_ID_PROP,
+  TOPOLOGY_NAME_PROP,
+  GEOGRAPHY_LABEL,
+  MARKER_TARGET_AREA,
+  MARKER_MIN_PART_AREA_FRAC,
+  MARKER_MAX_EXTENT,
+} from "./config.js";
+
 const PRECISION = 2; // decimal places in emitted path strings
 
-// Drop outlying parts below this share of a state's total area. At marker
-// size they are visual dust, but they inflate the bounding box badly --
-// Alaska's 55 Aleutian specks span more than twice the mainland's width.
-// The part-area distribution is bimodal with a clean gap here: everything
-// worth keeping is >=1.3% (Michigan's UP 28.5%, Hawaii's islands, Rhode
-// Island, Virginia, Massachusetts), everything droppable is <=0.7%.
-// It also removes Delaware's degenerate zero-area part, which would
-// otherwise produce a NaN centroid.
-const MIN_PART_AREA_FRAC = 0.01;
+// No projection: coordinates are already planar screen space.
+const path = geoPath().pointRadius(1);
 
-// Multipart states can enclose the right AREA while sprawling across a huge
-// bounding box -- Hawaii's 7 islands span 88x57 to enclose the same ink as
-// Kansas's 28x15. Rather than compress the water between the islands (which
-// would falsify the geometry), any silhouette wider or taller than
-// MAX_EXTENT is scaled down as a whole until it fits.
-//
-// TRADEOFF: a capped state keeps true shape AND true inter-part spacing, but
-// breaks the equal-area rule -- it carries proportionally less ink than the
-// other markers. That is the deliberate choice here: geometric honesty over
-// uniform visual weight.
-//
-// 50px sits just above Maryland's 48.7 (the widest ordinary state), so only
-// genuinely sprawling states trip it. Currently Hawaii alone.
-const MAX_EXTENT = 50;
+const topo = JSON.parse(readFileSync(TOPOLOGY_FILE, "utf8"));
+const object = topo.objects[TOPOLOGY_OBJECT];
+if (!object) {
+  throw new Error(
+    `TOPOLOGY_OBJECT "${TOPOLOGY_OBJECT}" is not in ${TOPOLOGY_FILE}. ` +
+      `It holds: ${Object.keys(topo.objects).join(", ")}`
+  );
+}
+const features = topojson.feature(topo, object).features;
 
-const topo = JSON.parse(readFileSync("data/states-albers-10m.json", "utf8"));
-const features = topojson.feature(topo, topo.objects.states).features;
+/** Feature identity, per TOPOLOGY_ID_PROP. Must match the padded CSV id. */
+const idOf = (f) =>
+  String(TOPOLOGY_ID_PROP ? (f.properties || {})[TOPOLOGY_ID_PROP] : f.id);
+
+/** Display name, per TOPOLOGY_NAME_PROP. Undefined falls back to the CSV. */
+const nameOf = (f) => (f.properties || {})[TOPOLOGY_NAME_PROP];
+
+// A topology whose ids are all "undefined" joins to nothing, and the symptom
+// (an empty map) points nowhere near the cause. Say so here instead.
+const badIds = features.filter((f) => idOf(f) === "undefined").length;
+if (badIds) {
+  throw new Error(
+    `${badIds} of ${features.length} features have no id. ` +
+      (TOPOLOGY_ID_PROP
+        ? `TOPOLOGY_ID_PROP is "${TOPOLOGY_ID_PROP}"; properties on the first feature are: ${Object.keys(
+            features[0].properties || {}
+          ).join(", ") || "(none)"}`
+        : `TOPOLOGY_ID_PROP is null, so the feature's own \`id\` is used -- ` +
+          `set it to a property name if this topology keys features that way.`)
+  );
+}
 
 /** Signed-area math on one polygon (ring[0] exterior, ring[1..] holes). */
 function polygonStats(rings) {
@@ -77,13 +99,13 @@ function polygonStats(rings) {
   return { area, cx: cx / area, cy: cy / area };
 }
 
-/** Parts of a state that survive the MIN_PART_AREA_FRAC filter. */
+/** Parts of a unit that survive the MARKER_MIN_PART_AREA_FRAC filter. */
 function keptParts(geom) {
   const polys = geom.type === "MultiPolygon" ? geom.coordinates : [geom.coordinates];
   const stats = polys.map((rings) => ({ rings, ...polygonStats(rings) }));
   const total = stats.reduce((s, p) => s + p.area, 0);
-  const kept = stats.filter((p) => p.area / total >= MIN_PART_AREA_FRAC);
-  return { kept, dropped: stats.length - kept.length };
+  const kept = stats.filter((p) => p.area / total >= MARKER_MIN_PART_AREA_FRAC);
+  return { kept, dropped: stats.length - kept.length, parts: stats.length };
 }
 
 /** Area-weighted centroid + total area across the kept parts. */
@@ -114,23 +136,21 @@ function measure(geom) {
   return { w: x1 - x0, h: y1 - y0, x0, y0, x1, y1 };
 }
 
-/** Factor (<=1) bringing a silhouette's bbox within MAX_EXTENT. */
+/** Factor (<=1) bringing a silhouette's bbox within MARKER_MAX_EXTENT. */
 function extentCap({ w, h }) {
-  return Math.min(1, MAX_EXTENT / w, MAX_EXTENT / h);
+  return Math.min(1, MARKER_MAX_EXTENT / w, MARKER_MAX_EXTENT / h);
 }
 
-// No projection: coordinates are already planar screen space.
-const path = geoPath().pointRadius(1);
-
-const lookup = {};
+const shapes = {};
 const rows = [];
 
 for (const f of features) {
   const { kept, dropped } = keptParts(f.geometry);
   const { area, cx, cy } = featureStats(kept);
+  const name = nameOf(f) || idOf(f);
 
   // Equal-area scale first, then shrink as a whole if the bbox is too big.
-  const equalArea = Math.sqrt(TARGET_AREA / area);
+  const equalArea = Math.sqrt(MARKER_TARGET_AREA / area);
   const cap = extentCap(measure(normalizeGeom(kept, cx, cy, equalArea)));
   const scale = equalArea * cap;
   const geom = normalizeGeom(kept, cx, cy, scale);
@@ -142,31 +162,48 @@ for (const f of features) {
   const { w, h, x0 } = measure(geom);
 
   if (!Number.isFinite(x0) || !Number.isFinite(area)) {
-    throw new Error(`${f.properties.name} (${f.id}) produced a non-finite silhouette`);
+    throw new Error(`${name} (${idOf(f)}) produced a non-finite silhouette`);
   }
 
-  lookup[f.id] = {
-    name: f.properties.name,
+  shapes[idOf(f)] = {
+    name,
     d,
     w: +w.toFixed(PRECISION),
     h: +h.toFixed(PRECISION),
     scale: +scale.toFixed(6),
     cx: +cx.toFixed(PRECISION), // centroid in the ORIGINAL map's screen space
     cy: +cy.toFixed(PRECISION),
-    // Present only on capped states: share of TARGET_AREA the marker holds.
+    // Present only on capped units: share of MARKER_TARGET_AREA the marker holds.
     inkFrac: cap < 1 ? +(cap * cap).toFixed(3) : undefined,
   };
-  rows.push({ id: f.id, ...lookup[f.id], parts: kept.length, dropped, cap, srcArea: area });
+  rows.push({ id: idOf(f), ...shapes[idOf(f)], parts: kept.length, dropped, cap, srcArea: area });
 }
 
-writeFileSync("data/state-silhouettes.json", JSON.stringify(lookup, null, 0));
+// The meta block makes the file self-describing, which matters because two
+// numbers in it are load-bearing on the other side: app.js sizes its hit radius
+// from targetArea rather than hardcoding a constant that silently disagrees,
+// and warns when `source` is not the topology it just loaded -- the signature
+// of a silhouette file left over from a previous geography.
+const meta = {
+  generated: new Date().toISOString(),
+  source: TOPOLOGY_FILE,
+  object: TOPOLOGY_OBJECT,
+  geographyLabel: GEOGRAPHY_LABEL,
+  count: rows.length,
+  targetArea: MARKER_TARGET_AREA,
+  maxExtent: MARKER_MAX_EXTENT,
+  minPartAreaFrac: MARKER_MIN_PART_AREA_FRAC,
+};
+
+writeFileSync(SILHOUETTE_FILE, JSON.stringify({ meta, shapes }, null, 0));
 
 const capped = rows.filter((r) => r.cap < 1);
 
 // ---- validation grid -------------------------------------------------
 // Self-contained so it opens straight from file:// -- no server needed.
-const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name));
-const COLS = 9;
+const sorted = [...rows].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+const COLS = Math.min(9, sorted.length);
+const STRIP_COLS = Math.min(17, sorted.length);
 const CELL = 96;
 const cells = sorted
   .map((r, i) => {
@@ -185,23 +222,24 @@ const ratioNote = `widest: ${widest[0].name} ${(widest[0].w / widest[0].h).toFix
   widest[widest.length - 1].name
 } 1:${(widest[widest.length - 1].h / widest[widest.length - 1].w).toFixed(2)}`;
 
-// Actual-marker-size strips: the real test of whether 10m resolution holds up.
-// If these read as mush, run the topology through toposimplify before
+// Actual-marker-size strips: the real test of whether the source resolution
+// holds up. If these read as mush, run the topology through toposimplify before
 // regenerating -- that decision belongs here, not after the interaction layer
 // exists.
 const strip = (scale) =>
   sorted
     .map((r, i) => {
-      const x = (i % 17) * 34 + 17;
-      const y = Math.floor(i / 17) * 34 + 17;
+      const x = (i % STRIP_COLS) * 34 + 17;
+      const y = Math.floor(i / STRIP_COLS) * 34 + 17;
       return `<g transform="translate(${x},${y}) scale(${scale})"><path d="${r.d}" /></g>`;
     })
     .join("\n");
 
+const side = Math.sqrt(MARKER_TARGET_AREA);
 const SIZES = [
-  [0.5, "50% &mdash; ~10px marker"],
-  [0.75, "75% &mdash; ~15px marker"],
-  [1, "100% &mdash; ~20px marker"],
+  [0.5, `50% &mdash; ~${(side * 0.5).toFixed(0)}px marker`],
+  [0.75, `75% &mdash; ~${(side * 0.75).toFixed(0)}px marker`],
+  [1, `100% &mdash; ~${side.toFixed(0)}px marker`],
 ];
 
 writeFileSync(
@@ -217,21 +255,22 @@ writeFileSync(
   text { text-anchor: middle; font: 9px system-ui, sans-serif; fill: #333; }
   text.dim { fill: #aaa; font-size: 8px; }
 </style>
-<h1>51 normalized state silhouettes &mdash; equal area (${TARGET_AREA}px&sup2;), centroid-anchored</h1>
-<p>Anchor = area-weighted centroid at each cell center. Labels show normalized bbox. ${ratioNote}<br>
+<h1>${rows.length} normalized ${GEOGRAPHY_LABEL} silhouettes &mdash; equal area (${MARKER_TARGET_AREA}px&sup2;), centroid-anchored</h1>
+<p>From ${TOPOLOGY_FILE}. Anchor = area-weighted centroid at each cell center.
+Labels show normalized bbox. ${ratioNote}<br>
 True geometry throughout &mdash; no spacing altered. ${
     capped.length
       ? capped
           .map(
             (r) =>
-              `<b>${r.name}</b> is capped at ${MAX_EXTENT}px and so carries ${(
+              `<b>${r.name}</b> is capped at ${MARKER_MAX_EXTENT}px and so carries ${(
                 r.cap *
                 r.cap *
                 100
               ).toFixed(0)}% of the standard ink.`
           )
           .join(" ")
-      : "No state needed capping."
+      : `No ${GEOGRAPHY_LABEL} needed capping.`
   }</p>
 <svg width="${COLS * CELL}" height="${Math.ceil(sorted.length / COLS) * CELL}">
 ${cells}
@@ -240,24 +279,24 @@ ${cells}
 <h2>Legibility at real marker sizes &mdash; can you still name them?</h2>
 ${SIZES.map(
   ([s, label]) => `<div><p style="margin:10px 0 2px">${label}</p>
-<svg width="${17 * 34}" height="${Math.ceil(sorted.length / 17) * 34}">${strip(s)}</svg></div>`
+<svg width="${STRIP_COLS * 34}" height="${Math.ceil(sorted.length / STRIP_COLS) * 34}">${strip(s)}</svg></div>`
 ).join("\n")}
 `
 );
 
-console.log(`Wrote ${rows.length} silhouettes -> data/state-silhouettes.json`);
+console.log(`Wrote ${rows.length} silhouettes -> ${SILHOUETTE_FILE}`);
 console.log(`Validation grid -> validate-grid.html`);
 console.log(
   `Dropped ${rows.reduce((s, r) => s + r.dropped, 0)} outlying parts across ` +
-    `${rows.filter((r) => r.dropped).length} states.`
+    `${rows.filter((r) => r.dropped).length} ${GEOGRAPHY_LABEL}s.`
 );
 console.log(
   capped.length
-    ? `Capped at ${MAX_EXTENT}px (true spacing kept, equal-area broken): ` +
+    ? `Capped at ${MARKER_MAX_EXTENT}px (true spacing kept, equal-area broken): ` +
         capped
           .map((r) => `${r.name} -> ${(r.cap * r.cap * 100).toFixed(0)}% of normal ink`)
           .join(", ")
-    : "No states needed capping."
+    : `No ${GEOGRAPHY_LABEL}s needed capping.`
 );
 console.log("\nLargest and smallest normalized bounding boxes:");
 console.table(
@@ -265,12 +304,12 @@ console.table(
     .sort((a, b) => b.w * b.h - a.w * a.h)
     .filter((_, i, arr) => i < 4 || i >= arr.length - 4)
     .map((r) => ({
-      state: r.name,
+      [GEOGRAPHY_LABEL]: r.name,
       parts: r.parts,
       w: r.w,
       h: r.h,
       bboxArea: +(r.w * r.h).toFixed(0),
-      // Capped states hold less than TARGET_AREA, so use their actual ink.
-      fill: `${((TARGET_AREA * r.cap * r.cap * 100) / (r.w * r.h)).toFixed(0)}%`,
+      // Capped units hold less than MARKER_TARGET_AREA, so use their actual ink.
+      fill: `${((MARKER_TARGET_AREA * r.cap * r.cap * 100) / (r.w * r.h)).toFixed(0)}%`,
     }))
 );

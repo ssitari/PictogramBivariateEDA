@@ -8,11 +8,16 @@
 //  outlines a reader already recognizes -- US states, perhaps European
 //  countries. It is not a general-purpose substitution for a dot.
 //
-//  Geometry is consumed from TWO derived files, both produced by
-//  `node preprocess.js` from a single pre-projected TopoJSON:
-//    TOPOLOGY_FILE   -> the choropleth
-//    SILHOUETTE_FILE -> the scatterplot marks
-//  Regenerate both together; never hand-edit the silhouette file.
+//  This file is read by BOTH halves of the tool -- app.js in the browser and
+//  preprocess.js under Node -- so the topology is described once and only
+//  once. Adapting the tool to new data should never mean editing either of
+//  them. (Paths are resolved relative to the project root either way, so run
+//  `node preprocess.js` from there.)
+//
+//  Geometry reaches the page as TWO files: the pre-projected TopoJSON drives
+//  the choropleth, and preprocess.js derives the marker silhouettes from that
+//  same topology. Regenerate after any change to the topology; never hand-edit
+//  the silhouette file. app.js warns if the two fall out of step.
 
 export const DATA_FILE       = './State_Dem_pct_wide.csv';
 export const TOPOLOGY_FILE   = './data/states-albers-10m.json';
@@ -21,7 +26,27 @@ export const SILHOUETTE_FILE = './data/state-silhouettes.json';
 // Object name inside the TopoJSON topology holding the geographies.
 export const TOPOLOGY_OBJECT = 'states';
 
+// Optional second object drawn as a single outline over the whole map -- the
+// national border here. Set to null if the topology has no such object.
+export const TOPOLOGY_OUTLINE_OBJECT = 'nation';
+
+// Where each feature's identity lives in the topology. TopoJSON conventionally
+// puts the key on the geometry itself (`f.id`), which is what null means here;
+// plenty of files put it in properties instead, in which case name the property
+// ("GEOID", "iso_a2", "code"). This value is what FEATURE_ID_FIELD in the CSV
+// has to match, after ID_PAD_WIDTH below.
+export const TOPOLOGY_ID_PROP = null;
+
+// Property holding each feature's display name. us-atlas uses "name"; Natural
+// Earth uses "NAME" or "ADMIN". If it doesn't resolve, the tool falls back to
+// FEATURE_NAME_FIELD from the CSV.
+export const TOPOLOGY_NAME_PROP = 'name';
+
+// Singular noun for one unit of this geography. It carries the running copy on
+// the page ("Marks are state silhouettes") as well as the console diagnostics,
+// so a county or province instance reads correctly without touching markup.
 export const GEOGRAPHY_LABEL  = 'state';
+
 export const FEATURE_ID_FIELD = 'state_fips';
 export const FEATURE_NAME_FIELD  = 'state';
 export const FEATURE_GROUP_FIELD = 'state_po';  // shown in tooltip, null to omit
@@ -116,14 +141,45 @@ export const SELECTION_COLOR = '#e07b39';
 export const DEEMPHASIS_OPACITY = 0.2;
 
 // ============================================================
-//  MARKER SIZING
+//  MARKER GENERATION  (read by preprocess.js only)
 // ============================================================
 //
-// Silhouettes arrive from preprocess.js already normalized to a common
-// area, centered on (0,0), in units where a typical state is ~20px across.
-// MARKER_SCALE multiplies that. Below ~0.4 the shapes stop being
-// recognizable, which defeats the entire point of the tool; above ~1.3
-// the plot becomes an unreadable pile in the dense middle.
+// Change any of these and re-run `node preprocess.js`, then open the
+// validate-grid.html it writes: the small-size strips at the bottom are the
+// only real test of whether the shapes still read.
+
+// Area in px^2 enclosed by every silhouette -- 400 makes a typical unit about
+// 20px across. Equal AREA, not equal bounding box: a thin unit and a chunky one
+// with matching bboxes carry very different amounts of ink.
+export const MARKER_TARGET_AREA = 400;
+
+// Outlying parts below this share of a unit's total area are dropped. They are
+// visual dust at marker size but wreck the bounding box: Alaska's 55 Aleutian
+// specks span more than twice the mainland's width. Check the console output
+// after running -- if the part-area distribution has no clean gap around this
+// value, the threshold is being asked to make a judgement it can't.
+export const MARKER_MIN_PART_AREA_FRAC = 0.01;
+
+// A multipart unit can enclose the right area while sprawling across a huge
+// bounding box (Hawaii's seven islands need 88x57 to hold the ink Kansas fits
+// in 28x15). Rather than compress the space between parts, which would falsify
+// the geometry, any silhouette exceeding this width or height is scaled down as
+// a whole. Set it just above the widest ORDINARY unit -- 50 clears Maryland's
+// 48.7 here, so only genuine sprawl trips it. preprocess.js prints what did.
+//
+// TRADEOFF: a capped unit keeps true shape and true spacing but breaks the
+// equal-area rule, carrying proportionally less ink. Geometric honesty over
+// uniform visual weight, deliberately.
+export const MARKER_MAX_EXTENT = 50;
+
+// ============================================================
+//  MARKER SIZING  (read by app.js)
+// ============================================================
+//
+// Silhouettes arrive from preprocess.js already normalized to MARKER_TARGET_AREA
+// and centered on (0,0). MARKER_SCALE multiplies that on the page. Below ~0.4
+// the shapes stop being recognizable, which defeats the entire point of the
+// tool; above ~1.3 the plot becomes an unreadable pile in the dense middle.
 export const MARKER_SCALE = 0.85;
 
 // Silhouettes overlap heavily wherever states cluster, so each mark carries
