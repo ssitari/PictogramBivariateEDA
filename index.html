@@ -87,7 +87,20 @@
   .state-border { fill: none; stroke: #b3b2ac; stroke-width: .6; }
   .nation-border { fill: none; stroke: #b9b8b3; stroke-width: .8; }
   .mark { cursor: pointer; }
-  .mark.dim { opacity: var(--dim, .2); }
+  /* Fill only. Dimming the whole element took the ring down with it, and the
+     ring is what keeps a pale mark visible at all -- de-emphasised states in
+     the near-white low-low cell vanished outright. The ring fades but stays. */
+  .mark.dim { fill-opacity: var(--dim, .2); stroke-opacity: .45; }
+  /* Now that the rectangle survives the mouse-up, it sits over the marks for
+     as long as the selection lasts -- and d3's default grey wash would mute
+     exactly the marks it selects. Which states are in is already legible from
+     the dimming of the ones that aren't, so the rectangle only has to show its
+     own extent. The fill stays barely-there rather than none, because it is
+     what makes the selection draggable. */
+  .brush .selection {
+    fill: #52514e; fill-opacity: .05;
+    stroke: #52514e; stroke-opacity: .5; stroke-dasharray: 3 2;
+  }
   .map-state { cursor: pointer; }
   .map-state.dim { opacity: var(--dim, .2); }
   .hl { stroke: #111; stroke-width: 1.6; paint-order: stroke; }
@@ -203,6 +216,13 @@
 </div>
 
 <footer id="pageFoot"></footer>
+
+<!-- Paint-server definitions (currently just the no-data hatch). Kept in their
+     own SVG because the map and the scatter each clear themselves on every
+     render; url(#...) resolves document-wide, so one copy serves every view. -->
+<svg id="patterns" aria-hidden="true"
+     style="position:absolute;width:0;height:0;overflow:hidden"></svg>
+
 <div id="tip"></div>
 
 <script type="module" src="app.js"></script>

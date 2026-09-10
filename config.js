@@ -101,8 +101,13 @@ export const DEFAULT_VAR_Y = 'democratic_pct_2024';
 // baggage.
 export const DEFAULT_BIVARIATE_SCHEME = 'DkCyan_DkBrown';
 
-// Color for features with null / no-data values
-export const NULL_COLOR = '#d0d0d0';
+// No-data fill. NOT a flat colour: it is drawn as a diagonal hatch, because
+// the lowest cell of every bivariate scheme above is itself a pale grey
+// (#e8e8e8 / #f3f3f3), and a grey null is then indistinguishable from a real
+// low-low value -- on this dataset that cell already covers a third of the map.
+// NULL_COLOR is the ground of the hatch, NULL_HATCH_COLOR the ruling over it.
+export const NULL_COLOR = '#e3e2dd';
+export const NULL_HATCH_COLOR = '#8f8e88';
 
 // Color for selected features in the map overlay
 export const SELECTION_COLOR = '#e07b39';

@@ -20,7 +20,8 @@ import {
   DATA_FILE, TOPOLOGY_FILE, SILHOUETTE_FILE, TOPOLOGY_OBJECT,
   GEOGRAPHY_LABEL, FEATURE_ID_FIELD, FEATURE_NAME_FIELD, FEATURE_GROUP_FIELD,
   ID_PAD_WIDTH, VARIABLES, DEFAULT_VAR_X, DEFAULT_VAR_Y,
-  DEFAULT_BIVARIATE_SCHEME, NULL_COLOR, SELECTION_COLOR, DEEMPHASIS_OPACITY,
+  DEFAULT_BIVARIATE_SCHEME, NULL_COLOR, NULL_HATCH_COLOR, SELECTION_COLOR,
+  DEEMPHASIS_OPACITY,
   MARKER_SCALE, MARKER_RING_WIDTH, MARKER_RING_COLOR,
 } from './config.js';
 
@@ -69,6 +70,10 @@ const BIVARIATE_SCHEMES = {
 
 const bivIndex = (xClass, yClass) => yClass * 3 + xClass;
 
+// Features with no value are hatched rather than filled flat -- see
+// buildPatterns() for why no solid colour can do this job here.
+const NO_DATA_FILL = 'url(#noData)';
+
 // ============================================================
 //  STATE
 // ============================================================
@@ -80,9 +85,16 @@ const state = {
   hoverId: null,
 };
 
-let rows = [];        // joined records
+let rows = [];        // joined records -- the data side; drives scatter + classes
+let mapUnits = [];    // every geography in the topology, joined or not
 let byId = new Map();
 let borders, nation;  // topojson meshes
+let mapView = null;   // viewBox derived from the topology's own bounds
+
+// The brush extent is remembered in DATA units, together with the variables it
+// was drawn against -- see the end of drawScatter().
+let brushExtent = null;
+let brushVars = null;
 
 const varById = id => VARIABLES.find(v => v.id === id);
 const padId = v => String(v).trim().padStart(ID_PAD_WIDTH, '0');
@@ -135,6 +147,29 @@ Promise.all([
 
   byId = new Map(rows.map(r => [r.id, r]));
 
+  // The map draws EVERY geography in the topology, not only the joined ones.
+  // Binding just the data rows left an unmatched feature as a hole in the map
+  // -- bare white inside the border mesh -- which reads as a rendering fault
+  // rather than as missing data. Unmatched units carry no values, so they
+  // classify as null and pick up the no-data hatch like any other gap.
+  mapUnits = features.map(f => byId.get(String(f.id)) || {
+    id: String(f.id),
+    name: (f.properties && f.properties.name) || String(f.id),
+    group: null,
+    geom: f,
+    values: {},
+    unmatched: true,
+  });
+
+  // The viewBox comes from the topology's own bounds rather than a hardcoded
+  // 975x610. us-atlas' Albers layout actually starts at x = -57.7 -- the
+  // western Aleutians sit left of the origin -- so a 0-origin box quietly
+  // clipped them off Alaska. Any other topology has different extents again.
+  const [[bx0, by0], [bx1, by1]] =
+    d3.geoPath().bounds({ type: 'FeatureCollection', features });
+  const gap = Math.max(bx1 - bx0, by1 - by0) * 0.005;
+  mapView = [bx0 - gap, by0 - gap, (bx1 - bx0) + gap * 2, (by1 - by0) + gap * 2];
+
   // Join diagnostics stay available but off the page: a clean join is the
   // normal case and doesn't need announcing. A broken one is usually the
   // FIPS zero-padding (see ID_PAD_WIDTH), which drops exactly the
@@ -148,6 +183,30 @@ Promise.all([
     );
   }
 
+  // Variable diagnostics. A variable whose `prop` doesn't match the CSV header
+  // -- a typo, or a column renamed upstream -- yields nothing but nulls, and
+  // every downstream symptom of that (empty axes, a blank legend, a wholly
+  // hatched map) points away from the cause. Name it here instead.
+  const header = new Set(csv.columns || []);
+  const absent = VARIABLES.filter(v => !header.has(v.prop));
+  const blank = VARIABLES.filter(
+    v => header.has(v.prop) && !rows.some(r => r.values[v.id] != null)
+  );
+  if (absent.length) {
+    console.warn(
+      `[data] ${absent.length} variable(s) name a column that is not in ${DATA_FILE}: ` +
+      absent.map(v => `"${v.prop}" (${v.label})`).join(', ')
+    );
+  }
+  if (blank.length) {
+    console.warn(
+      `[data] ${blank.length} variable(s) have a column but no numeric values in it ` +
+      `(blank, or non-numeric text such as "1,234"): ` +
+      blank.map(v => `"${v.prop}" (${v.label})`).join(', ')
+    );
+  }
+
+  buildPatterns();
   buildFooter();
   buildControls();
   render();
@@ -158,20 +217,58 @@ Promise.all([
 // ============================================================
 function terciles(varId) {
   const vals = rows.map(r => r.values[varId]).filter(v => v != null).sort(d3.ascending);
+  // Fewer than three values cannot define two breaks. d3.quantile returns
+  // undefined on an empty array, and that undefined used to travel as far as
+  // vx.fmt() in the legend and throw mid-render -- leaving a half-drawn page
+  // whose likeliest cause (a mistyped `prop` in config.js) appeared nowhere in
+  // the error. Returning null classifies every feature as no-data instead,
+  // which is both true and visible.
+  if (vals.length < 3) return null;
   return [d3.quantile(vals, 1 / 3), d3.quantile(vals, 2 / 3)];
 }
 
 function classOf(value, breaks) {
-  if (value == null) return null;
+  if (value == null || breaks == null) return null;
   return value <= breaks[0] ? 0 : value <= breaks[1] ? 1 : 2;
 }
 
 function colorFor(rec, bx, by) {
   const cx = classOf(rec.values[state.varX], bx);
   const cy = classOf(rec.values[state.varY], by);
-  if (cx == null || cy == null) return NULL_COLOR;
+  if (cx == null || cy == null) return NO_DATA_FILL;
   return BIVARIATE_SCHEMES[state.scheme].colors[bivIndex(cx, cy)];
 }
+
+// ============================================================
+//  NO-DATA HATCH
+// ============================================================
+// A flat grey cannot mark "no data" on a bivariate map: the lowest cell of
+// every scheme here IS a pale grey (#e8e8e8 or #f3f3f3), so a grey null is
+// indistinguishable from a genuine low-low value -- and on this dataset a
+// third of the map sits in that cell. A hatch is the cartographic convention
+// and is the one fill no class can imitate.
+//
+// It lives in its own SVG because the map and the scatter each clear
+// themselves on every render. url(#noData) resolves document-wide, so a single
+// definition serves both views and the legend key.
+function buildPatterns() {
+  const svg = d3.select('#patterns');
+  svg.selectAll('*').remove();
+  const p = svg.append('defs').append('pattern')
+    .attr('id', 'noData')
+    .attr('patternUnits', 'userSpaceOnUse')
+    .attr('width', 6).attr('height', 6)
+    .attr('patternTransform', 'rotate(45)');
+  p.append('rect').attr('width', 6).attr('height', 6).attr('fill', NULL_COLOR);
+  p.append('line')
+    .attr('x1', 0).attr('y1', 0).attr('x2', 0).attr('y2', 6)
+    .attr('stroke', NULL_HATCH_COLOR).attr('stroke-width', 2);
+}
+
+// The table's swatch is an HTML span and cannot reference an SVG paint server,
+// so the same hatch is restated once as a CSS gradient.
+const NO_DATA_SWATCH =
+  `repeating-linear-gradient(45deg, ${NULL_COLOR} 0 3px, ${NULL_HATCH_COLOR} 3px 5px)`;
 
 // ============================================================
 //  FOOTER
@@ -223,7 +320,9 @@ function buildControls() {
   $('#varY').addEventListener('change', e => { state.varY = e.target.value; render(); });
   schemeSel.addEventListener('change', e => { state.scheme = e.target.value; render(); });
   $('#clearBtn').addEventListener('click', () => {
-    state.selectedIds.clear(); render();
+    state.selectedIds.clear();
+    brushExtent = brushVars = null;
+    render();
   });
   $('#tableBtn').addEventListener('click', e => {
     const wrap = $('#tableWrap');
@@ -246,9 +345,15 @@ function render() {
   $('#scatterTitle').textContent = `${vy.label} vs ${vx.label}`;
   $('#mapTitle').textContent = `${vy.label} × ${vx.label}`;
 
+  // The legend shows a no-data key only when something actually lacks data.
+  const hasNoData = mapUnits.some(
+    r => classOf(r.values[state.varX], bx) == null ||
+         classOf(r.values[state.varY], by) == null
+  );
+
   drawScatter(vx, vy, bx, by);
   drawMap(bx, by);
-  drawLegend(vx, vy, bx, by);
+  drawLegend(vx, vy, bx, by, hasNoData);
   drawTable(vx, vy, bx, by);
 }
 
@@ -269,10 +374,17 @@ function drawScatter(vx, vy, bx, by) {
 
   // When both axes carry the same unit, share one domain so the 1:1 line
   // is a true 45 degrees and "above the line" means "gained" honestly.
-  const sameUnit = vx.unit === vy.unit;
+  // Both halves of this test matter. Two variables that simply never declared
+  // a `unit` are not "the same unit" -- without the null check,
+  // `undefined === undefined` handed any such pair a shared domain, a 1:1 line
+  // labelled "no change", and a change figure in the tooltip, none of which
+  // meant anything.
+  const sameUnit = vx.unit != null && vx.unit === vy.unit;
   const pad = 0.06;
   const span = (arr) => {
-    const [lo, hi] = d3.extent(arr); const g = (hi - lo) * pad;
+    const [lo, hi] = d3.extent(arr);
+    if (lo == null) return [0, 1];      // nothing to plot; keep the axes finite
+    const g = (hi - lo) * pad || 1;     // a single distinct value has no span
     return [lo - g, hi + g];
   };
   const domX = sameUnit ? span(xs.concat(ys)) : span(xs);
@@ -354,7 +466,10 @@ function drawScatter(vx, vy, bx, by) {
     .extent([[0, 0], [iw, ih]])
     .on('end', ev => {
       if (!ev.sourceEvent) return;
-      if (!ev.selection) { state.selectedIds.clear(); render(); return; }
+      if (!ev.selection) {
+        brushExtent = brushVars = null;
+        state.selectedIds.clear(); render(); return;
+      }
       const [[x0, y0], [x1, y1]] = ev.selection;
       state.selectedIds = new Set(
         plotted.filter(d => {
@@ -363,9 +478,28 @@ function drawScatter(vx, vy, bx, by) {
           return px >= x0 && px <= x1 && py >= y0 && py <= y1;
         }).map(d => d.id)
       );
+      // Kept in DATA units, not pixels, so it survives the rebuild below and
+      // still means the same thing after a scheme change or a resize.
+      brushExtent = [[x.invert(x0), y.invert(y1)], [x.invert(x1), y.invert(y0)]];
+      brushVars = [state.varX, state.varY];
       render();
     });
   brushG.call(brush);
+
+  // Put the rectangle back. drawScatter clears the SVG on every render, so
+  // releasing the mouse used to erase the brush along with everything else:
+  // the selection survived, the handles did not, and adjusting a selection
+  // meant drawing it again from scratch. A change of VARIABLE retires the
+  // extent rather than re-projecting it -- the same data window on new axes is
+  // a different question from the one the reader asked. brush.move fires with
+  // no sourceEvent, so the handler above ignores it.
+  if (brushExtent && brushVars &&
+      brushVars[0] === state.varX && brushVars[1] === state.varY) {
+    const [[dx0, dy0], [dx1, dy1]] = brushExtent;
+    brushG.call(brush.move, [[x(dx0), y(dy1)], [x(dx1), y(dy0)]]);
+  } else {
+    brushExtent = brushVars = null;
+  }
   brushG.selectAll('.overlay')
     .attr('cursor', 'crosshair')
     .on('mousemove.hover', ev => {
@@ -387,8 +521,7 @@ function drawScatter(vx, vy, bx, by) {
 
 // ---- choropleth ------------------------------------------------------
 function drawMap(bx, by) {
-  const W = 975, H = 610;
-  const svg = d3.select('#map').attr('viewBox', `0 0 ${W} ${H}`);
+  const svg = d3.select('#map').attr('viewBox', mapView.join(' '));
   svg.selectAll('*').remove();
 
   // No projection: the topology is already in this coordinate space.
@@ -396,7 +529,7 @@ function drawMap(bx, by) {
   const hasSel = state.selectedIds.size > 0;
 
   svg.append('g').selectAll('path.map-state')
-    .data(rows, d => d.id)
+    .data(mapUnits, d => d.id)
     .join('path')
     .attr('class', d => 'map-state' + (hasSel && !state.selectedIds.has(d.id) ? ' dim' : ''))
     .attr('d', d => path(d.geom))
@@ -405,6 +538,7 @@ function drawMap(bx, by) {
     .on('mousemove', moveTip)
     .on('mouseleave', () => { state.hoverId = null; highlight(); hideTip(); })
     .on('click', (ev, d) => {
+      if (d.unmatched) return;   // no data row behind it, so nothing to select
       if (state.selectedIds.has(d.id)) state.selectedIds.delete(d.id);
       else state.selectedIds.add(d.id);
       render();
@@ -415,7 +549,7 @@ function drawMap(bx, by) {
 
   // Selected states get an outline that survives the de-emphasis wash.
   svg.append('g').selectAll('path.sel')
-    .data(rows.filter(d => state.selectedIds.has(d.id)), d => d.id)
+    .data(mapUnits.filter(d => state.selectedIds.has(d.id)), d => d.id)
     .join('path')
     .attr('class', 'sel')
     .attr('d', d => path(d.geom))
@@ -441,10 +575,11 @@ function highlight() {
 // Names the variables and shows the tercile break values, so the key can be
 // read without consulting the controls. Truncation keeps a long variable
 // label from stretching the panel.
-function drawLegend(vx, vy, bx, by) {
+function drawLegend(vx, vy, bx, by, hasNoData) {
   const S = 26, gap = 2;
   const size = S * 3 + gap * 2;
-  const padL = 56, padB = 48, padT = 6, padR = 8;
+  const padL = 56, padT = 6, padR = 8;
+  const padB = hasNoData ? 64 : 48;   // room for the no-data key when needed
   const W = padL + size + padR;
   const H = padT + size + padB;
 
@@ -491,14 +626,15 @@ function drawLegend(vx, vy, bx, by) {
 
   const tick = { 'font-size': 8, fill: '#898781' };
 
-  // Break values at the class boundaries.
-  bx.forEach((b, i) => {
+  // Break values at the class boundaries. Absent when the variable had too few
+  // values to break on -- see terciles().
+  if (bx) bx.forEach((b, i) => {
     g.append('text')
       .attr('x', (i + 1) * (S + gap) - gap / 2).attr('y', size + 11)
       .attr('text-anchor', 'middle').attr('font-size', 8).attr('fill', tick.fill)
       .text(vx.fmt(b));
   });
-  by.forEach((b, i) => {
+  if (by) by.forEach((b, i) => {
     g.append('text')
       .attr('x', -5).attr('y', size - (i + 1) * (S + gap) + gap / 2 + 3)
       .attr('text-anchor', 'end').attr('font-size', 8).attr('fill', tick.fill)
@@ -515,6 +651,17 @@ function drawLegend(vx, vy, bx, by) {
     .attr('text-anchor', 'middle')
     .attr('font-size', 9).attr('font-weight', 600).attr('fill', '#52514e');
   multiline(yLab, wrap(vy.label + ' →', 24), -size / 2, -42);
+
+  if (hasNoData) {
+    g.append('rect')
+      .attr('x', 0).attr('y', size + 44)
+      .attr('width', 11).attr('height', 11)
+      .attr('fill', NO_DATA_FILL).attr('stroke', 'rgba(0,0,0,.12)');
+    g.append('text')
+      .attr('x', 16).attr('y', size + 53)
+      .attr('font-size', 9).attr('fill', '#52514e')
+      .text('no data');
+  }
 }
 
 // ---- table view (relief channel; identity never color-alone) ----------
@@ -525,7 +672,10 @@ function drawTable(vx, vy, bx, by) {
   const tbody = $('#dataTable tbody');
   tbody.innerHTML = '';
 
-  const sorted = [...rows].sort((a, b) => d3.ascending(a.name, b.name));
+  // mapUnits, not rows: a geography with no data row still appears on the map,
+  // so it has to be findable here as well -- this table is the map's relief
+  // channel. With a clean join the two lists are identical.
+  const sorted = [...mapUnits].sort((a, b) => d3.ascending(a.name, b.name));
   for (const r of sorted) {
     const cx = classOf(r.values[state.varX], bx);
     const cy = classOf(r.values[state.varY], by);
@@ -533,11 +683,12 @@ function drawTable(vx, vy, bx, by) {
     const label = cx == null || cy == null
       ? 'no data'
       : `X ${names[cx]} · Y ${names[cy]}`;
+    const swatch = cx == null || cy == null ? NO_DATA_SWATCH : colorFor(r, bx, by);
     tr.innerHTML =
       `<td>${r.name}${r.group ? ` <span style="color:#898781">(${r.group})</span>` : ''}</td>` +
       `<td class="num">${r.values[state.varX] == null ? '—' : vx.fmt(r.values[state.varX])}</td>` +
       `<td class="num">${r.values[state.varY] == null ? '—' : vy.fmt(r.values[state.varY])}</td>` +
-      `<td><span class="swatch" style="background:${colorFor(r, bx, by)}"></span>${label}</td>`;
+      `<td><span class="swatch" style="background:${swatch}"></span>${label}</td>`;
     tbody.appendChild(tr);
   }
 }
@@ -546,9 +697,13 @@ function drawTable(vx, vy, bx, by) {
 function showTip(ev, d) {
   const vx = varById(state.varX), vy = varById(state.varY);
   const fx = d.values[state.varX], fy = d.values[state.varY];
-  const delta = vx.unit === vy.unit && fx != null && fy != null
-    ? `<div class="k">change: ${(fy - fx >= 0 ? '+' : '')}${(fy - fx).toFixed(1)}${vy.unit}</div>`
-    : '';
+  // Formatted by the variable's own fmt() rather than a hardcoded toFixed(1):
+  // the change between two dollar figures or two counts is not a percentage.
+  const sameUnit = vx.unit != null && vx.unit === vy.unit;
+  const diff = sameUnit && fx != null && fy != null ? fy - fx : null;
+  const delta = diff == null
+    ? ''
+    : `<div class="k">change: ${diff >= 0 ? '+' : '−'}${vy.fmt(Math.abs(diff))}</div>`;
   $('#tip').innerHTML =
     `<b>${d.name}</b>${d.group ? ` <span class="k">${d.group}</span>` : ''}` +
     `<div><span class="k">${vx.label}:</span> ${fx == null ? '—' : vx.fmt(fx)}</div>` +
